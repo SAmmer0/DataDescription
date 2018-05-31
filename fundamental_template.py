@@ -58,11 +58,11 @@ def ttm_factory(data_name_sql, table_name):
     def inner(start_time, end_time):
         start_time, end_time = trans_date(start_time, end_time)
         start_time_shift = get_calendar('stock.sse').shift_tradingdays(start_time, -450)
-        cur_sql = sql.format(data=data_name_sql, sql_type=table_map[table_name],
+        cur_sql = sql.format(data=data_name_sql, table_name_sql=table_map[table_name],
                              start_time=start_time_shift, end_time=end_time)
         raw_data = fetch_db_data(jydb, cur_sql, ['update_date', 'rpt_date', 'symbol', 'data'], 
                                 {'data': 'float64'})
-        raw_data = calc_seasonly_data(raw_data, ['symbol', 'data', 'udpate_date', 'rpt_date'])
+        raw_data = calc_seasonly_data(raw_data, ['symbol', 'data', 'update_date', 'rpt_date'])
         raw_data.symbol = raw_data.symbol.apply(add_stock_suffix)
         # pdb.set_trace()
         data = process_fundamental_data(raw_data, ['symbol', 'data', 'update_date', 'rpt_date'],
