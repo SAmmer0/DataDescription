@@ -17,7 +17,7 @@ if CALCULATION_FOLDER_PATH not in sys_path:
     sys_path.append(dirname(CALCULATION_FOLDER_PATH))
 from fundamental_template import shift_factory 
 
-dd = DataDescription(shift_factory('ISY', 'OperatingRevenue', 3, 4), trans_date('2018-05-24'),
+dd = DataDescription(shift_factory('ISY', 'TotalOperatingRevenue', 3, 4), trans_date('2018-05-24'),
                      DataType.PANEL_NUMERIC, dep=['UNIVERSE', 'LIST_STATE'], 
                      desc='往前推3个财年的归属母公司净利润')
 

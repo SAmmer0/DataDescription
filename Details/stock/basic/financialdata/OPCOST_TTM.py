@@ -17,7 +17,7 @@ if CALCULATION_FOLDER_PATH not in sys_path:
     sys_path.append(dirname(CALCULATION_FOLDER_PATH))
 from fundamental_template import ttm_factory
 
-dd = DataDescription(ttm_factory('OperatingCost', 'IS'), trans_date('2018-05-22'),
+dd = DataDescription(ttm_factory('TotalOperatingCost', 'IS'), trans_date('2018-05-22'),
                      DataType.PANEL_NUMERIC, dep=['UNIVERSE', 'LIST_STATE'], 
                      desc='营业成本TTM')
 
