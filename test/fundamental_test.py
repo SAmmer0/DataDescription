@@ -72,20 +72,27 @@ def bs_shift_db(symbol, date, data_name, offset, tab_name='LC_BalanceSheetAll'):
     SELECT m.SecuCode, s.{data}, s.enddate, s.infopubldate
     FROM
             (SELECT EndDate, InfoPublDate, {data}, CompanyCode, BulletinType, IfMerged, ROW_NUMBER()
-            OVER(PARTITION BY COMPANYCODE, ENDDATE ORDER BY INFOPUBLDATE DESC) as rnum FROM {tab_name}) s, SecuMain M
+            OVER(PARTITION BY COMPANYCODE, ENDDATE ORDER BY INFOPUBLDATE DESC) as rnum FROM {tab_name}
+            WHERE
+            BulletinType != 10 AND
+            InfoPublDate < \'{date:%Y-%m-%d}\' AND
+            IfMerged = 1
+            ) s, SecuMain M
     where
             s.rnum = 1 AND
             S.CompanyCode = M.CompanyCode AND
             M.SecuCode = \'{symbol}\' AND
             M.SecuCategory = 1 AND
             M.SecuMarket IN (83, 90) AND
-            S.BulletinType != 10 AND
-            S.InfoPublDate < \'{date:%Y-%m-%d}\' AND
-            S.IfMerged = 1
-    ORDER BY S.EndDate ASC
+            S.EndDate >= (SELECT TOP(1) S2.CHANGEDATE
+                      FROM LC_ListStatus S2
+                      WHERE
+                          S2.INNERCODE = M.INNERCODE AND
+                          S2.ChangeType = 1)
+               ORDER BY S.EndDate ASC
     '''.format(symbol=symbol, data=data_name, date=date, tab_name=tab_name)
     data = fetch_db_data(jydb, sql, ['symbol', 'data', 'rpt_date', 'update_time'], {'data': 'float64'})
-    if len(data) < offset + 1 or get_calendar('stock.sse').count(data.iloc[-1, 3], date) > 120:
+    if len(data) < offset or get_calendar('stock.sse').count(data.iloc[-1, 3], date) > 120:
         return np.nan
     # pdb.set_trace()
     return data.iloc[-offset, 1]
@@ -106,7 +113,7 @@ def cshift_db(symbol, date, data_name, tab_name, offset):
             OVER(PARTITION BY COMPANYCODE, ENDDATE ORDER BY INFOPUBLDATE DESC) as rnum FROM {tab_name}
             WHERE
             BulletinType != 10 AND
-            InfoPublDate < '2018-07-04' AND
+            InfoPublDate < \'{date:%Y-%m-%d}\' AND
             IfAdjusted NOT IN (4, 5) AND
             IfMerged = 1) s, SecuMain M
     where
@@ -115,10 +122,6 @@ def cshift_db(symbol, date, data_name, tab_name, offset):
             M.SecuCode = \'{symbol}\' AND
             M.SecuCategory = 1 AND
             M.SecuMarket IN (83, 90) AND
-            --S.BulletinType != 10 AND
-            --S.InfoPublDate < \'{date:%Y-%m-%d}\' AND
-            --S.IfAdjusted NOT IN (4, 5) AND
-            --S.IfMerged = 1 AND
             S.EndDate >= (SELECT TOP(1) S2.CHANGEDATE
                       FROM LC_ListStatus S2
                       WHERE
@@ -150,5 +153,20 @@ def test_NI5S(date):
         raise "Error in NI5S test!"
     print('All test passed!')
 
+def test_TA(date):
+    if not get_calendar('stock.sse').is_tradingday(date):
+        date = get_calendar('stock.sse').shift_tradingdays(date, -1)
+    sample = get_sample(date, 500)
+    # sample = ['300167.SZ']
+    sql_result = pd.Series({symbol: bs_shift_db(symbol, date, 'TotalAssets', 1)
+                            for symbol in sample}).fillna(-1000)
+    db_result = query('TA', date).reindex(sql_result.index).fillna(-1000)
+    if not np.all(np.isclose(sql_result, db_result)):
+        diff = ~np.isclose(sql_result, db_result)
+        print(sql_result[diff])
+        print(db_result[diff])
+        raise "Error in TA test!"
+    print('All test passed!')
+
 if __name__ == '__main__':
-    test_NI5S('2018-07-04')
+    test_TA('2018-07-04')
