@@ -10,6 +10,7 @@ from random import sample
 import pdb
 
 import numpy as np
+import pandas as pd
 
 from pitdata import data_simu_calculation, query
 from datasource.sqlserver.jydb import jydb
@@ -20,8 +21,6 @@ from datautils.toolkits import drop_suffix
 def get_sample(date, sample_size):
     # date: 测试数据的时间
     # sample_size: 样本量大小
-    if not get_calendar('stock.sse').is_tradingday(date):
-        date = get_calendar('stock.sse').shift_tradingdays(date, -1)
     universe = query('UNIVERSE', date).index.tolist()
     sample_res = sample(universe, sample_size)
     return sample_res
@@ -104,24 +103,52 @@ def cshift_db(symbol, date, data_name, tab_name, offset):
     SELECT m.SecuCode, s.{data}, s.enddate, s.infopubldate
     FROM
             (SELECT EndDate, InfoPublDate, {data}, CompanyCode, BulletinType, IfAdjusted, IfMerged, ROW_NUMBER()
-            OVER(PARTITION BY COMPANYCODE, ENDDATE ORDER BY INFOPUBLDATE DESC) as rnum FROM {tab_name}) s, SecuMain M
+            OVER(PARTITION BY COMPANYCODE, ENDDATE ORDER BY INFOPUBLDATE DESC) as rnum FROM {tab_name}
+            WHERE
+            BulletinType != 10 AND
+            InfoPublDate < '2018-07-04' AND
+            IfAdjusted NOT IN (4, 5) AND
+            IfMerged = 1) s, SecuMain M
     where
             s.rnum = 1 AND
             S.CompanyCode = M.CompanyCode AND
             M.SecuCode = \'{symbol}\' AND
             M.SecuCategory = 1 AND
             M.SecuMarket IN (83, 90) AND
-            S.BulletinType != 10 AND
-            S.InfoPublDate < \'{date:%Y-%m-%d}\' AND
-            S.IfAdjusted NOT IN (4, 5) AND
-            S.IfMerged = 1
+            --S.BulletinType != 10 AND
+            --S.InfoPublDate < \'{date:%Y-%m-%d}\' AND
+            --S.IfAdjusted NOT IN (4, 5) AND
+            --S.IfMerged = 1 AND
+            S.EndDate >= (SELECT TOP(1) S2.CHANGEDATE
+                      FROM LC_ListStatus S2
+                      WHERE
+                          S2.INNERCODE = M.INNERCODE AND
+                          S2.ChangeType = 1)
     ORDER BY S.EndDate ASC'''.format(data=data_name, symbol=symbol, date=date, tab_name=tab_name)
     data = fetch_db_data(jydb, sql, ['symbol', 'data', 'rpt_date', 'update_time'], {'data': 'float64'})
     # pdb.set_trace()
-    if len(data) <= offset or get_calendar('stock.sse').count(data.iloc[-1, 3], date) > 120:
+    if len(data) < offset or get_calendar('stock.sse').count(data.iloc[-1, 3], date) > 120:
         return np.nan
     raw_data = data.set_index('rpt_date').data
     seasonly_data = raw_data - raw_data.shift(1)
     seasonly_data.loc[seasonly_data.index.month==3] = np.nan
     seasonly_data = seasonly_data.fillna(raw_data)
     return seasonly_data.iloc[-offset]
+
+def test_NI5S(date):
+    if not get_calendar('stock.sse').is_tradingday(date):
+        date = get_calendar('stock.sse').shift_tradingdays(date, -1)
+    sample = get_sample(date, 500)
+    # sample = ['300167.SZ']
+    sql_result = pd.Series({symbol: cshift_db(symbol, date, 'NPParentCompanyOwners', 'LC_IncomeStatementAll', 5)
+                            for symbol in sample}).fillna(-1000)
+    db_result = query('NI5S', date).reindex(sql_result.index).fillna(-1000)
+    if not np.all(np.isclose(sql_result, db_result)):
+        diff = ~np.isclose(sql_result, db_result)
+        print(sql_result[diff])
+        print(db_result[diff])
+        raise "Error in NI5S test!"
+    print('All test passed!')
+
+if __name__ == '__main__':
+    test_NI5S('2018-07-04')
