@@ -73,8 +73,8 @@ def ttm_processor(raw_data, cols, start_time, end_time):
     index为时间，columns为证券代码轴
     """
     raw_data = calc_seasonly_data(raw_data, cols)
-    raw_data.symbol = raw_data.symbol.apply(add_stock_suffix)
     # pdb.set_trace()
+    raw_data.symbol = raw_data.symbol.apply(add_stock_suffix)
     data = process_fundamental_data(raw_data, cols, start_time, end_time, 6, calc_tnm, 
                                     data_col='data', period_flag_col='rpt_date')
     last_td = get_calendar('stock.sse').latest_tradingday(end_time, 'PAST')
@@ -153,8 +153,8 @@ def ttm_factory(data_name_sql, table_name):
         S.BulletinType != 10 AND
         S.IfAdjusted not in (4, 5) AND
         S.IfMerged = 1 AND
-        S.EndDate >= \'{start_time: %Y-%m-%d}\' AND
-        S.InfoPublDate <= \'{end_time: %Y-%m-%d}\' AND
+        S.EndDate >= \'{start_time:%Y-%m-%d}\' AND
+        S.InfoPublDate <= \'{end_time:%Y-%m-%d}\' AND
         S.EndDate >= (SELECT TOP(1) S2.CHANGEDATE
                       FROM LC_ListStatus S2
                       WHERE
@@ -171,7 +171,8 @@ def ttm_factory(data_name_sql, table_name):
                                             {'data': data_name_sql, 'table_name_sql': table_map[table_name]},
                                             {'data': 'float64'})
         raw_data = data_fetcher(start_time_shift, end_time)
-        raw_data = raw_data.drop_duplicates(['update_date', 'rpt_date'])
+        # pdb.set_trace()
+        raw_data = raw_data.drop_duplicates(['symbol', 'update_date', 'rpt_date'])
         return ttm_processor(raw_data, cols, start_time, end_time)
     return inner
 
@@ -206,8 +207,8 @@ def shift_factory(table_name, data_name_sql, offset, freq):
         S.BulletinType != 10 AND
         {if_adjusted}
         S.IfMerged = 1 AND
-        S.EndDate >= \'{start_time: %Y-%m-%d}\' AND
-        S.InfoPublDate <= \'{end_time: %Y-%m-%d}\' AND
+        S.EndDate >= \'{start_time:%Y-%m-%d}\' AND
+        S.InfoPublDate <= \'{end_time:%Y-%m-%d}\' AND
         S.EndDate >= (SELECT TOP(1) S2.CHANGEDATE
                       FROM LC_ListStatus S2
                       WHERE

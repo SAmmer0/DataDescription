@@ -36,23 +36,33 @@ def ttm_db(symbol, date, data_name, tab_name):
     sql = '''
     SELECT m.SecuCode, s.{data}, s.enddate, s.infopubldate
     FROM
-            (SELECT EndDate, InfoPublDate, {data}, CompanyCode, BulletinType, IfAdjusted, IfMerged, ROW_NUMBER()
-            OVER(PARTITION BY COMPANYCODE, ENDDATE ORDER BY INFOPUBLDATE DESC) as rnum FROM {tab_name}) s, SecuMain M
+            (SELECT EndDate, InfoPublDate, {data}, CompanyCode, BulletinType, IfMerged, ROW_NUMBER()
+            OVER(PARTITION BY COMPANYCODE, ENDDATE ORDER BY INFOPUBLDATE DESC) as rnum FROM {tab_name}
+            WHERE
+            BulletinType != 10 AND
+            InfoPublDate < \'{date:%Y-%m-%d}\' AND
+            IfMerged = 1
+            ) s, SecuMain M
     where
             s.rnum = 1 AND
             S.CompanyCode = M.CompanyCode AND
             M.SecuCode = \'{symbol}\' AND
             M.SecuCategory = 1 AND
             M.SecuMarket IN (83, 90) AND
-            S.BulletinType != 10 AND
-            S.InfoPublDate < \'{date:%Y-%m-%d}\' AND
-            S.IfAdjusted NOT IN (4, 5) AND
-            S.IfMerged = 1
-    ORDER BY S.EndDate ASC'''.format(data=data_name, symbol=symbol, date=date, tab_name=tab_name)
+            S.EndDate >= (SELECT TOP(1) S2.CHANGEDATE
+                      FROM LC_ListStatus S2
+                      WHERE
+                          S2.INNERCODE = M.INNERCODE AND
+                          S2.ChangeType = 1)
+               ORDER BY S.EndDate ASC'''.format(data=data_name, symbol=symbol, date=date, tab_name=tab_name)
     data = fetch_db_data(jydb, sql, ['symbol', 'data', 'rpt_date', 'update_time'], {'data': 'float64'})
     # pdb.set_trace()
-    if len(data) <= 5 or get_calendar('stock.sse').count(data.iloc[-1, 3], date) > 120:
-        return np.nan
+    if len(data) <= 4 or get_calendar('stock.sse').count(data.iloc[-1, 3], date) > 120:
+        if len(data) == 4:
+            if data['rpt_date'].iloc[0].month != 3:
+                return np.nan
+        else:
+            return np.nan
     raw_data = data.set_index('rpt_date').data
     seasonly_data = raw_data - raw_data.shift(1)
     seasonly_data.loc[seasonly_data.index.month==3] = np.nan
@@ -138,6 +148,47 @@ def cshift_db(symbol, date, data_name, tab_name, offset):
     seasonly_data = seasonly_data.fillna(raw_data)
     return seasonly_data.iloc[-offset]
 
+def bs_shift_db_year(symbol, date, offset, data_name, tab_name='LC_BalanceSheetAll'):
+    # 按年度进行偏移的资产负债表数据
+    # 计算资产负债表偏移后的数据
+    # symbol: 股票代码
+    # date: 测试数据时间
+    # data_name: 数据名称(查询聚源)
+    # offset: 数据时间偏移量，以季度为单位
+    # tab_name: 报表名称，默认为资产负债表
+    symbol = drop_suffix(symbol)
+    date = trans_date(date)
+    sql = '''
+    SELECT m.SecuCode, s.{data}, s.enddate, s.infopubldate
+    FROM
+            (SELECT EndDate, InfoPublDate, {data}, CompanyCode, BulletinType, IfMerged, ROW_NUMBER()
+            OVER(PARTITION BY COMPANYCODE, ENDDATE ORDER BY INFOPUBLDATE DESC) as rnum FROM {tab_name}
+            WHERE
+            BulletinType != 10 AND
+            InfoPublDate < \'{date:%Y-%m-%d}\' AND
+            IfMerged = 1
+            ) s, SecuMain M
+    where
+            s.rnum = 1 AND
+            S.CompanyCode = M.CompanyCode AND
+            M.SecuCode = \'{symbol}\' AND
+            M.SecuCategory = 1 AND
+            M.SecuMarket IN (83, 90) AND
+            S.EndDate >= (SELECT TOP(1) S2.CHANGEDATE
+                      FROM LC_ListStatus S2
+                      WHERE
+                          S2.INNERCODE = M.INNERCODE AND
+                          S2.ChangeType = 1)
+               ORDER BY S.EndDate ASC
+    '''.format(symbol=symbol, data=data_name, date=date, tab_name=tab_name)
+    data = fetch_db_data(jydb, sql, ['symbol', 'data', 'rpt_date', 'update_time'], {'data': 'float64'})
+    data = data.loc[data.rpt_date.month == 12]
+    if len(data) < offset or get_calendar('stock.sse').count(data.iloc[-1, 3], date) > 120:
+        return np.nan
+    # pdb.set_trace()
+    return data.iloc[-offset, 1]
+
+
 def test_NI5S(date):
     if not get_calendar('stock.sse').is_tradingday(date):
         date = get_calendar('stock.sse').shift_tradingdays(date, -1)
@@ -168,5 +219,22 @@ def test_TA(date):
         raise "Error in TA test!"
     print('All test passed!')
 
+def test_FIEXP_TTM(date):
+    if not get_calendar('stock.sse').is_tradingday(date):
+        date = get_calendar('stock.sse').shift_tradingdays(date, -1)
+    last_date = get_calendar('stock.sse').shift_tradingdays(date, -3)
+    sample = get_sample(date, 500)
+    # sample = ['300167.SZ']
+    sql_result = pd.Series({symbol: ttm_db(symbol, date, 'FinancialExpense', 'LC_IncomeStatementAll')
+                            for symbol in sample}).fillna(-1000)
+    # db_result = query('FIEXP_TTM', date).reindex(sql_result.index).fillna(-1000)
+    db_result = data_simu_calculation('FIEXP_TTM', last_date, date).iloc[-1].reindex(sql_result.index).fillna(-1000)
+    if not np.all(np.isclose(sql_result, db_result)):
+        diff = ~np.isclose(sql_result, db_result)
+        print(sql_result[diff])
+        print(db_result[diff])
+        raise "Error in TA test!"
+    print('All test passed!')
+
 if __name__ == '__main__':
-    test_TA('2018-07-04')
+    test_FIEXP_TTM('2018-07-04')
