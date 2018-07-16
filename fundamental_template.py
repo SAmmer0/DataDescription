@@ -243,3 +243,83 @@ def shift_factory(table_name, data_name_sql, offset, freq):
             is_signal_season = False
         return shift_processor(raw_data, cols, start_time, end_time, offset, freq, is_signal_season)
     return inner
+
+def xps_shift_factory(table_name, data_name_sql, offset, freq):
+    """
+    母函数，用于生成计算每股指标的函数
+
+    Parameter
+    ---------
+    table_name: string
+        报表名称，当前仅支持[BS, CFSY, ISY]，分别对应资产负债表，利润表，现金流量表
+    data_name_sql: string
+        聚源数据库中数据的名称，需查询对应的数据库字典
+    offset: int
+        往前推的期数，offset=1表示计算最近一期的数据，offset=2表示计算次近一期的数据，
+        以此类推
+    freq: int
+        数据推移的频率，仅支持[1, 2, 4]，分别表示为季度、半年度和年度
+        其中利润表和现金流量表仅支持[1, 4]，且当freq为1时，仅计算单季度数据
+
+    Return
+    ------
+    func: function(start_time, end_time)
+    """
+    table_map = {'BS': 'LC_BalanceSheetAll', 'ISY': 'LC_IncomeStatementAll', 
+                 'CFSY': 'LC_CashFlowStatementAll'}
+    sql = '''
+    SELECT M.secuCode, S.{data}, S.TotalShares, S.InfoPublDate, S.EndDate
+    from
+    (SELECT S2.{data}, S2.EndDate, S1.TotalShares, S2.CompanyCode, S2.InfoPublDate
+    FROM
+        (LC_ShareStru S1 right outer join {table_name_sql} S2 
+        on (S1.CompanyCode = S2.CompanyCode AND
+            S1.EndDate = S2.EndDate AND 
+            S2.BulletinType != 10 AND
+            {if_adjusted}
+            S2.IfMerged = 1
+            ))) s, SecuMain M
+    WHERE
+        M.CompanyCode = S.CompanyCode AND
+        M.SecuMarket in (83, 90) AND
+        M.SecuCategory = 1 AND
+        S.EndDate >= \'{start_time:%Y-%m-%d}\' AND
+        S.InfoPublDate <= \'{end_time:%Y-%m-%d}\' AND
+        S.EndDate >= (SELECT TOP(1) S3.CHANGEDATE
+                        FROM LC_ListStatus S3
+                        WHERE
+                            S3.INNERCODE = M.INNERCODE AND
+                            S3.ChangeType = 1)
+    ORDER BY M.SecuCode ASC, S.EndDate ASC, S.InfoPublDate ASC
+    '''
+    if table_name in ['CFSY', 'ISY']:
+        if_adjusted = 'S2.IfAdjusted not in (4, 5) AND'
+    else:
+        if_adjusted = ''
+    if offset < 1 or not isinstance(offset, int):
+        raise ValueError('Offset parameter must be interger and larger than 1!')
+    
+    @drop_delist_data
+    def inner(start_time, end_time):
+        if table_name in ['ISY', 'CFSY'] and freq == 2:
+            raise ValueError('Incompatible parameters(table_name={tn}, freq={f}'.\
+                             format(tn=table_name, f=freq))
+        start_time, end_time = trans_date(start_time, end_time)
+        start_time_shifted = get_calendar('stock.sse').\
+                             shift_tradingdays(start_time, -(66 * (offset + 2) * freq))
+        cols = ['symbol', 'data', 'total_share', 'update_date', 'rpt_date']
+        data_fetcher = data_fetcher_factory(sql, cols, jydb, 
+                                            {'data': data_name_sql, 'table_name_sql': table_map[table_name], 
+                                            'if_adjusted': if_adjusted},
+                                            {'data': 'float64', 'total_share': 'float64'})
+        raw_data = data_fetcher(start_time_shifted, end_time)
+        raw_data['total_share'] = raw_data.groupby('symbol').total_share.fillna(method='ffill')
+        raw_data['data'] = raw_data['data'] / raw_data['total_share']
+        raw_data = raw_data.drop('total_share', axis=1).\
+                   drop_duplicates(['symbol', 'update_date', 'rpt_date'])
+        if table_name in ['ISY', 'CFSY']:   # 当前利润表和现金流量表计算季度偏移时仅会计算单季度数据
+            is_signal_season = True
+        else:
+            is_signal_season = False
+        return shift_processor(raw_data, ['symbol', 'data', 'update_date', 'rpt_date'], start_time, end_time, offset, freq, is_signal_season)
+    return inner
