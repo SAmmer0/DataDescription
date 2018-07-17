@@ -231,6 +231,46 @@ def cshift_year_db(symbol, date, data_name, tab_name, offset):
         return np.nan
     return data.iloc[-offset, 1]
 
+def xps_shift_year(symbol, date, data_name, tab_name, offset):
+    # 计算年度偏移后的XPS指标
+    symbol = drop_suffix(symbol)
+    date = trans_date(date)
+    if tab_name == 'LC_BalanceSheetAll':
+        if_adjusted = ''
+    else:
+        if_adjusted = 'IfAdjusted NOT IN (4, 5) AND'
+    sql = '''
+    SELECT m.SecuCode, s.TotalShares, s.{data}, s.enddate, s.infopubldate
+    FROM
+	    (select s1.EndDate, s1.InfoPublDate, s1.{data}, s1.CompanyCode, s1.rnum, s2.TotalShares from
+            (SELECT EndDate, InfoPublDate, {data}, CompanyCode, BulletinType, IfAdjusted, IfMerged, ROW_NUMBER()
+            OVER(PARTITION BY COMPANYCODE, ENDDATE ORDER BY INFOPUBLDATE DESC) as rnum FROM {tab_name}
+            WHERE
+            BulletinType != 10 AND
+            InfoPublDate < \'{date:%Y-%m-%d}\' AND
+            {if_adjusted}
+            IfMerged = 1) s1 left outer join LC_ShareStru s2 on (s1.CompanyCode = s2.CompanyCode AND s1.EndDate = s2.EndDate)) s, SecuMain M
+    where
+            s.rnum = 1 AND
+            S.CompanyCode = M.CompanyCode AND
+            M.SecuCode = \'{symbol}\' AND
+            M.SecuCategory = 1 AND
+            M.SecuMarket IN (83, 90) AND
+            S.EndDate >= (SELECT TOP(1) S3.CHANGEDATE
+                      FROM LC_ListStatus S3
+                      WHERE
+                          S3.INNERCODE = M.INNERCODE AND
+                          S3.ChangeType = 1)
+    ORDER BY S.EndDate ASC
+    '''.format(data=data_name, tab_name=tab_name, date=date, symbol=symbol, if_adjusted=if_adjusted)
+    data = fetch_db_data(jydb, sql, ['symbol', 'total_share', 'data', 'rpt_date', 'update_time'], {'data': 'float64', 'total_share': 'float64'})
+    data['total_share'] = data.total_share.fillna(method='ffill')
+    if len(data) < 1:
+        return np.nan
+    data = data.loc[data.rpt_date.dt.month == 12]
+    if len(data) < offset or get_calendar('stock.sse').count(data.iloc[-1, -1], date) > 120:
+        return np.nan
+    return data.iloc[-offset, 2] / data.iloc[-offset, 1]
 
 def test_NI5S(date):
     if not get_calendar('stock.sse').is_tradingday(date):
@@ -313,5 +353,23 @@ def test_NI3Y(date):
         raise "Error in TA test!"
     print('All test passed!')
 
+
+def test_EPS1Y(date):
+    if not get_calendar('stock.sse').is_tradingday(date):
+        date = get_calendar('stock.sse').shift_tradingdays(date, -1)
+    last_date = get_calendar('stock.sse').shift_tradingdays(date, -3)
+    sample = get_sample(date, 500)
+    # sample = ['600571.SH']
+    sql_result = pd.Series({symbol: xps_shift_year(symbol, date, 'NPParentCompanyOwners', 'LC_IncomeStatementAll', 1)
+                            for symbol in sample}).fillna(-1000)
+    db_result = query('EPS1Y', date).reindex(sql_result.index).fillna(-1000)
+    # db_result = data_simu_calculation('FIEXP_TTM', last_date, date).iloc[-1].reindex(sql_result.index).fillna(-1000)
+    if not np.all(np.isclose(sql_result, db_result)):
+        diff = ~np.isclose(sql_result, db_result)
+        print(sql_result[diff])
+        print(db_result[diff])
+        raise "Error in TA test!"
+    print('All test passed!')
+
 if __name__ == '__main__':
-    test_NI3Y('2018-07-04')
+    test_EPS1Y('2018-07-04')
