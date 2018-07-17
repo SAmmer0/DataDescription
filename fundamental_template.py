@@ -259,7 +259,7 @@ def xps_shift_factory(table_name, data_name_sql, offset, freq):
         以此类推
     freq: int
         数据推移的频率，仅支持[1, 2, 4]，分别表示为季度、半年度和年度
-        其中利润表和现金流量表仅支持[1, 4]，且当freq为1时，仅计算单季度数据
+        其中利润表和现金流量表仅支持[4]
 
     Return
     ------
@@ -272,13 +272,13 @@ def xps_shift_factory(table_name, data_name_sql, offset, freq):
     from
     (SELECT S2.{data}, S2.EndDate, S1.TotalShares, S2.CompanyCode, S2.InfoPublDate
     FROM
-        (LC_ShareStru S1 right outer join {table_name_sql} S2 
+        LC_ShareStru S1 right outer join {table_name_sql} S2 
         on (S1.CompanyCode = S2.CompanyCode AND
-            S1.EndDate = S2.EndDate AND 
+            S1.EndDate = S2.EndDate)
+        WHERE
             S2.BulletinType != 10 AND
-            {if_adjusted}
-            S2.IfMerged = 1
-            ))) s, SecuMain M
+            S2.IfAdjusted not in (4, 5) AND
+            S2.IfMerged = 1) s, SecuMain M
     WHERE
         M.CompanyCode = S.CompanyCode AND
         M.SecuMarket in (83, 90) AND
@@ -301,7 +301,7 @@ def xps_shift_factory(table_name, data_name_sql, offset, freq):
     
     @drop_delist_data
     def inner(start_time, end_time):
-        if table_name in ['ISY', 'CFSY'] and freq == 2:
+        if table_name in ['ISY', 'CFSY'] and (freq == 2 or freq == 1):
             raise ValueError('Incompatible parameters(table_name={tn}, freq={f}'.\
                              format(tn=table_name, f=freq))
         start_time, end_time = trans_date(start_time, end_time)
