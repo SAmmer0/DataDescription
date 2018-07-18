@@ -371,5 +371,23 @@ def test_EPS1Y(date):
         raise "Error in TA test!"
     print('All test passed!')
 
+
+def test_SPS3Y(date):
+    if not get_calendar('stock.sse').is_tradingday(date):
+        date = get_calendar('stock.sse').shift_tradingdays(date, -1)
+    last_date = get_calendar('stock.sse').shift_tradingdays(date, -3)
+    sample = get_sample(date, 500)
+    # sample = ['600571.SH']
+    sql_result = pd.Series({symbol: xps_shift_year(symbol, date, 'TotalOperatingRevenue', 'LC_IncomeStatementAll', 3)
+                            for symbol in sample}).fillna(-1000)
+    db_result = query('SPS3Y', date).reindex(sql_result.index).fillna(-1000)
+    # db_result = data_simu_calculation('FIEXP_TTM', last_date, date).iloc[-1].reindex(sql_result.index).fillna(-1000)
+    if not np.all(np.isclose(sql_result, db_result)):
+        diff = ~np.isclose(sql_result, db_result)
+        print(sql_result[diff])
+        print(db_result[diff])
+        raise "Error in TA test!"
+    print('All test passed!')
+
 if __name__ == '__main__':
-    test_EPS1Y('2018-07-04')
+    test_SPS3Y('2018-07-04')
