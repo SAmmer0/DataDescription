@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 
 from pitdata import query_group, pitcache_getter
-from tdtools import get_calendar
+from tdtools import get_calendar, trans_date
 from data_checkers import drop_delist_data, check_completeness
 
 def divide_data_factory(denominator_func, numerator_func, denominator_kwargs=None,
@@ -86,6 +86,37 @@ def growth_rate_factory(data_name_format, period):
         last_td = get_calendar('stock.sse').latest_tradingday(end_time, 'PAST')
         universe = sorted(pitcache_getter('UNIVERSE', 10).get_csdata(last_td).index)
         data = data.reindex(columns=universe)
+        if not check_completeness(data.index, start_time, end_time):
+            raise ValueError('Data missed!')
+        return data
+    return inner
+
+def vol_factory(lag, ret_source='CLOSE_DRET'):
+    """
+    母函数，用于生成简易波动率，对于停牌的股票，如果期间没有任何交易，则为NA，
+    有交易的话则首先计算有交易的时间段的波动，然后scale到给定的交易日长度
+
+    Parameter
+    ---------
+    lag: int
+        波动率的计算周期
+    ret_source: string
+        计算波动率使用的收益率
+
+    Return
+    ------
+    func: function(start_time, end_time)
+    """
+    @drop_delist_data
+    def inner(start_time, end_time):
+        start_time, end_time = trans_date(start_time, end_time)
+        start_time_shifted = get_calendar('stock.sse').shift_tradingdays(start_time, -(lag+1))
+        ret_data = pitcache_getter(ret_source, lag+1).get_tsdata(start_time_shifted, end_time)
+        data = ret_data.rolling(lag, min_periods=lag).std()
+        latest_td = get_calendar('stock.sse').latest_tradingday(end_time, 'PAST')
+        universe = sorted(pitcache_getter('UNIVERSE', 10).get_csdata(latest_td).index)
+        data = data.reindex(columns=universe)
+        data = data.loc[(data.index>=start_time) & (data.index<=end_time)]
         if not check_completeness(data.index, start_time, end_time):
             raise ValueError('Data missed!')
         return data
