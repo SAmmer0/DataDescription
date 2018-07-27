@@ -93,8 +93,7 @@ def growth_rate_factory(data_name_format, period):
 
 def vol_factory(lag, ret_source='CLOSE_DRET'):
     """
-    母函数，用于生成简易波动率，对于停牌的股票，如果期间没有任何交易，则为NA，
-    有交易的话则首先计算有交易的时间段的波动，然后scale到给定的交易日长度
+    母函数，用于生成简易波动率
 
     Parameter
     ---------
