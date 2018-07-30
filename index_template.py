@@ -9,6 +9,7 @@ from datasource.sqlserver.jydb import jydb
 from datasource.sqlserver.utils import fetch_db_data
 from datasource.sqlserver.jydb import map2td
 from pitdata import pitcache_getter
+from pitdata.const import DATA_START_DATE
 from data_checkers import check_completeness
 from tdtools import trans_date, get_calendar
 from datautils.toolkits import add_stock_suffix
@@ -76,6 +77,8 @@ def get_index_quote(index_symbol, field):
         '''.format(symbol=index_symbol, start_time=start_time, end_time=end_time, field=field)
         data = fetch_db_data(jydb, sql, ['data', 'time'], dtypes={'data': 'float64'})
         data = data.set_index('time').data
-        data = data.reindex(index=get_calendar('stock.sse').get_tradingdays(start_time, end_time))
+        if (start_time != trans_date(DATA_START_DATE) and 
+            not check_completeness(data.index, start_time, end_time)):
+            raise ValueError('Data Missed!')
         return data
     return inner
