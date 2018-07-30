@@ -10,7 +10,7 @@ from datasource.sqlserver.utils import fetch_db_data
 from datasource.sqlserver.jydb import map2td
 from pitdata import pitcache_getter
 from pitdata.const import DATA_START_DATE
-from data_checkers import check_completeness
+from data_checkers import check_completeness, check_jydb_update_state
 from tdtools import trans_date, get_calendar
 from datautils.toolkits import add_stock_suffix
 
@@ -64,6 +64,8 @@ def get_index_quote(index_symbol, field):
     '''
     def inner(start_time, end_time):
         start_time, end_time = trans_date(start_time, end_time)
+        if not check_jydb_update_state(end_time):
+            raise ValueError('JYDB has not been updated!')
         sql = '''
         SELECT S.{field}, S.TradingDay
         FROM QT_IndexQuote S, SecuMain M

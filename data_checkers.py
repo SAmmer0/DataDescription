@@ -10,6 +10,7 @@ from numpy import logical_or, nan
 
 from tdtools import get_calendar
 from pitdata import pitcache_getter
+from datasource.sqlserver.jydb import get_db_update_time 
 
 
 def check_completeness(time_index, start_time, end_time):
@@ -51,3 +52,25 @@ def drop_delist_data(func):
         data[~valid_mask] = nan
         return data
     return inner
+
+def check_jydb_update_state(check_time):
+    """
+    检测剧院数据库是否已经更新到给定时间的最近的一个交易日(往前推)
+    即给定的日期时候在数据库最新日期之前
+
+    Parameter
+    ---------
+    check_time: datetime like
+        需要检测的时间
+
+    Return
+    ------
+    is_updated: boolean
+        True表示是最新
+    """
+    db_update_time = get_db_update_time()
+    latest_td = get_calendar('stock.sse').latest_tradingday(check_time, 'PAST')
+    if latest_td.date() <= db_update_time.date():
+        return True
+    else:
+        return False
