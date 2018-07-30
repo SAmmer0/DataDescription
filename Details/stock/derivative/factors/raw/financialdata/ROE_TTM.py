@@ -18,6 +18,6 @@ if CALCULATION_FOLDER_PATH not in sys_path:
 from derivate_template import divide_data_factory
 
 dd = DataDescription(divide_data_factory(pitcache_getter('NI_TTM', 10).get_tsdata, 
-                                         pitcache_getter('EQUITY', 10).get_tsdata),
+                                         pitcache_getter('EQUITY5S', 10).get_tsdata),
                      trans_date('2018-07-27'), DataType.PANEL_NUMERIC, 
-                     ['NI_TTM', 'EQUITY'], 'ROE TTM')
+                     ['NI_TTM', 'EQUITY5S'], 'ROE TTM等于NI_TTM/EQUITY5S', in_test=True)
