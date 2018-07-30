@@ -6,6 +6,7 @@ Email: howardleeh@gmail.com
 Github: https://github.com/SAmmer0
 Created: 2018-05-25 15:23
 """
+from functools import wraps
 import pandas as pd
 import numpy as np
 
@@ -119,4 +120,11 @@ def vol_factory(lag, ret_source='CLOSE_DRET'):
         if not check_completeness(data.index, start_time, end_time):
             raise ValueError('Data missed!')
         return data
+    return inner
+
+def abs_wrapper(func):
+    @wraps(func)
+    def inner(start_time, end_time):
+        data = func(start_time, end_time)
+        return np.abs(data)
     return inner
