@@ -25,4 +25,4 @@ dd = DataDescription(divide_data_factory(pitcache_getter('OPP_TTM', 10).get_tsda
                                          abs_wrapper(pitcache_getter('OPR_TTM', 10).get_tsdata)),
                      trans_date('2018-07-30'), DataType.PANEL_NUMERIC, 
                      ['OPR_TTM', 'OPP_TTM'],
-                     '总营业利润率 = 总营业利润 / abs(营业收入)', in_test=True)
+                     '总营业利润率 = 总营业利润 / abs(营业收入)')

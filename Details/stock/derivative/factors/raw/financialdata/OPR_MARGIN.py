@@ -31,4 +31,4 @@ dd = DataDescription(divide_data_factory(numerator,
                                          abs_wrapper(pitcache_getter('OPR_TTM', 10).get_tsdata)),
                      trans_date('2018-07-30'), DataType.PANEL_NUMERIC, 
                      ['OPR_TTM', 'OPCOST_TTM', 'OPEXP_TTM', 'ADMINEXP_TTM', 'FIEXP_TTM'],
-                     '总营业利润率 = (营业收入-营业成本-销售费用-管理费用-财务费用) / abs(营业收入)', in_test=True)
+                     '总营业利润率 = (营业收入-营业成本-销售费用-管理费用-财务费用) / abs(营业收入)')
