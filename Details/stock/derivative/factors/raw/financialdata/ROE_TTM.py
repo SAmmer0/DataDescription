@@ -17,7 +17,7 @@ if CALCULATION_FOLDER_PATH not in sys_path:
     sys_path.append(dirname(CALCULATION_FOLDER_PATH))
 from derivate_template import divide_data_factory
 
-dd = DataDescription(divide_data_factory(pitcache_getter('NI_TTM').get_tsdata, 
-                                         pitcache_getter('EQUITY').get_tsdata),
+dd = DataDescription(divide_data_factory(pitcache_getter('NI_TTM', 10).get_tsdata, 
+                                         pitcache_getter('EQUITY', 10).get_tsdata),
                      trans_date('2018-07-27'), DataType.PANEL_NUMERIC, 
                      ['NI_TTM', 'EQUITY'], 'ROE TTM')
