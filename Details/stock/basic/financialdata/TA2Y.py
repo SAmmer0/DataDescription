@@ -20,5 +20,5 @@ from fundamental_template import shift_factory
 
 dd = DataDescription(shift_factory('BS', 'TotalAssets', 2, 4), trans_date('2018-05-24'),
                      DataType.PANEL_NUMERIC, dep=['UNIVERSE', 'LIST_STATE'], 
-                     desc='上一个财年的总资产')
+                     desc='次近财年的总资产')
 
