@@ -19,5 +19,5 @@ from fundamental_template import shift_factory
 
 dd = DataDescription(shift_factory('BS', 'TotalCurrentAssets', 1, 1), trans_date('2018-05-23'),
                      DataType.PANEL_NUMERIC, dep=['UNIVERSE', 'LIST_STATE'], 
-                     desc='最近一个报告期的非流动性资产')
+                     desc='最近一个报告期的流动性资产')
 
