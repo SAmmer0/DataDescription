@@ -9,6 +9,7 @@ Created: 2018-05-25 15:23
 from functools import wraps
 import pandas as pd
 import numpy as np
+import scipy as sp
 
 from pitdata import query_group, pitcache_getter
 from tdtools import get_calendar, trans_date
@@ -129,3 +130,73 @@ def abs_wrapper(func):
         return np.abs(data)
     return inner
 
+def momentum_factory(start_t, end_t=0):
+    """
+    动量因子工厂函数，此处动量=P_{end_t} / P_{start_t} - 1
+    其中，P为复权调整后的价格
+
+    Parameter
+    ---------
+    start_t: int
+        正整数，表示计算动量的基准日与当前交易日的时间间隔
+    end_t: int, default 0
+        正整数，表示计算动量的结束日与当前交易日的时间间隔；之所以要加入end_t参数，是
+        因为有的动量因子剔除了最近一段时间的反转效应
+
+    Return
+    ------
+    func: function
+        格式为function(start_time, end_time)->pandas.DataFrame
+    """
+    @drop_delist_data
+    def inner(start_time, end_time):
+        start_time, end_time = trans_date(start_time, end_time)
+        shifted_start_time = get_calendar('stock.sse').shift_tradingdays(start_time, -start_t-1)
+        period = start_t - end_t
+        price_data = pitcache_getter('CLOSE_ADJ', 10).get_tsdata(shifted_start_time, end_time)
+        data = price_data.shift(end_t).pct_change(period)
+        data = data.loc[(data.index >= start_time) & (data.index <= end_time)]
+        last_td = get_calendar('stock.sse').latest_tradingday(end_time, 'PAST')
+        universe = sorted(pitcache_getter('UNIVERSE', 10).get_csdata(last_td).index)
+        data = data.reindex(columns=universe)
+        if not check_completeness(data.index, start_time, end_time):
+            raise ValueError('Data missed!')
+        return data
+    return inner
+
+
+def skv_factory(period, func_name):
+    """
+    用于生成简易偏度、峰度和标准差的工厂函数
+
+    Parameter
+    ---------
+    period: int
+        正整数，用于计算相关统计数据的时间区间长度
+    func_name: string
+        计算函数的名称，目前支持['skew', 'kurt', 'std']，分别表示偏度、峰度和标准差
+
+    Return
+    ------
+    func: function(start_time, end_time)->pandas.DataFrame
+    """
+    func_category = {'skew': sp.stats.skew, 'kurt': sp.stats.kurtosis, 'std': np.std}
+    if func_name not in func_category.keys():
+        raise ValueError('Invalid function name(func_name={fn}), valids are {v}.'
+                         .format(fn=func_name, v=func_category.keys()))
+    func = func_category[func_name]
+
+    @drop_delist_data
+    def inner(start_time, end_time):
+        start_time, end_time = trans_date(start_time, end_time)
+        shifted_start_time = get_calendar('stock.sse').shift_tradingdays(start_time, -period-1)
+        ret_data = pitcache_getter('CLOSE_DRET', 10).get_tsdata(shifted_start_time, end_time)
+        data = ret_data.rolling(period, min_periods=period).apply(func)
+        data = data.loc[(data.index >= start_time) & (data.index <= end_time)]
+        last_td = get_calendar('stock.sse').latest_tradingday(end_time, 'PAST')
+        universe = sorted(pitcache_getter('UNIVERSE', 10).get_csdata(last_td).index)
+        data = data.reindex(columns=universe)
+        if not check_completeness(data.index, start_time, end_time):
+            raise ValueError('Data missed!')
+        return data
+    return inner
